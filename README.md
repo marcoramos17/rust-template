@@ -7,7 +7,7 @@
 
 <!-- Rustdoc Pages Shield with Logo -->
 
-<a href="https://github.com/marcoramos17">
+<a href="https://marcoramos17.github.io/rust-template/rust_template/">
     <img src="https://img.shields.io/badge/docs-available-brightgreen" alt="{RustDoc} Pages"></a>
 </div>
 
