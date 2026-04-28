@@ -1,12 +1,14 @@
-[package]
-name = "rust_template"
-version = "0.1.0"
-authors = ["Marco Ramos marcoandreramos17@gmail.com>"]
-edition = "2021"
-description = "A Rust template project with modularized code and documentation"
+[workspace]
+members = [
+    "crates/cli",
+    "crates/render",
+]
+
+resolver = "2"
+
+[workspace.package]
+authors = ["Marco Ramos <marcoandreramos17@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/marcoramos17/rust-template"
 homepage = "https://marcoramos17.github.io/rust-template"
 documentation = "https://marcoramos17.github.io/rust-template"
-
-[dependencies]
