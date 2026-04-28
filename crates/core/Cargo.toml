@@ -1,7 +1,9 @@
+cargo-features = ["edition2024"]
+
 [package]
 name = "rust_template_core"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 authors.workspace = true
 license.workspace = true
