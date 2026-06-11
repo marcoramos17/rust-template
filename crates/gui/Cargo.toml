@@ -1,5 +1,5 @@
 [package]
-name = "rust_template_render"
+name = "rust_template_gui"
 version = "0.1.0"
 edition = "2024"
 
@@ -10,4 +10,6 @@ homepage.workspace = true
 
 [dependencies]
 rust_template_core = { path = "../core" }
-winit = "0.31.0-beta.2"
+rust_template_interface = { path = "interface" }
+rust_template_render = { path = "render" }
+tracing = "0.1"
