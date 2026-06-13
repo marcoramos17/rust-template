@@ -1,10 +1,12 @@
 use std::error::Error;
 
 mod util {
+    pub mod egui_winit;
     pub mod fill;
     pub mod tracing;
 }
 
+use util::egui_winit::State as EguiWinitState;
 use util::fill::Renderer;
 use util::tracing::init;
 use wgpu::SurfaceError;
@@ -38,7 +40,6 @@ pub struct WindowSpec {
     pub width: u32,
     pub height: u32,
     pub window_type: WindowType,
-    pub bg_color: [f64; 4],
 }
 
 impl Default for WindowSpec {
@@ -48,19 +49,26 @@ impl Default for WindowSpec {
             width: 1280,
             height: 720,
             window_type: WindowType::Windowed,
-            bg_color: [0.05, 0.15, 0.30, 1.0],
         }
     }
 }
 
-#[derive(Default)]
-struct App {
+struct App<S, F, T> {
     window: Option<Box<dyn Window>>,
     renderer: Option<Renderer>,
+    egui_winit: Option<EguiWinitState>,
     spec: Option<WindowSpec>,
+    state: S,
+    ui: F,
+    theme: T,
 }
 
-impl ApplicationHandler for App {
+impl<S, F, T> ApplicationHandler for App<S, F, T>
+where
+    S: 'static,
+    F: FnMut(&egui::Context, &mut S) + 'static,
+    T: Fn(&egui::Context) + 'static,
+{
     fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
         let spec = match &self.spec {
             Some(s) => s.clone(),
@@ -78,20 +86,20 @@ impl ApplicationHandler for App {
 
         self.window = match event_loop.create_window(window_attributes) {
             Ok(window) => {
-                // Note: initial size is requested via WindowAttributes min surface size.
-                // apply window type choices after creation where possible
                 match spec.window_type {
                     WindowType::Windowed => {
                         let _ = window.set_decorations(true);
                     }
                     WindowType::Fullscreen => {
-                        let _ = window.set_fullscreen(Some(winit::monitor::Fullscreen::Borderless(None)));
+                        let _ = window
+                            .set_fullscreen(Some(winit::monitor::Fullscreen::Borderless(None)));
                     }
                     WindowType::Borderless => {
                         let _ = window.set_decorations(false);
                     }
                 }
-                let renderer = match pollster::block_on(Renderer::new(window.as_ref(), spec.bg_color)) {
+
+                let renderer = match pollster::block_on(Renderer::new(window.as_ref())) {
                     Ok(renderer) => Some(renderer),
                     Err(err) => {
                         tracing::error!(%err, "failed to initialize renderer");
@@ -100,7 +108,12 @@ impl ApplicationHandler for App {
                     }
                 };
 
+                let egui_ctx = renderer.as_ref().unwrap().egui_ctx().clone();
+                (self.theme)(&egui_ctx);
+
+                self.egui_winit = Some(EguiWinitState::new(egui_ctx));
                 self.renderer = renderer;
+                window.request_redraw();
                 Some(window)
             }
             Err(err) => {
@@ -111,41 +124,67 @@ impl ApplicationHandler for App {
         };
     }
 
-    fn window_event(&mut self, event_loop: &dyn ActiveEventLoop, _id: WindowId, event: WindowEvent) {
-        tracing::info!(?event, "window event");
+    fn window_event(
+        &mut self,
+        event_loop: &dyn ActiveEventLoop,
+        _id: WindowId,
+        event: WindowEvent,
+    ) {
+        let window = match &self.window {
+            Some(w) => w,
+            None => return,
+        };
+
+        if let Some(egui_winit) = &mut self.egui_winit {
+            let response = egui_winit.on_window_event(window.as_ref(), &event);
+            if response.repaint {
+                window.request_redraw();
+            }
+        }
+
         match event {
             WindowEvent::CloseRequested => {
-                tracing::info!("Close was requested; stopping");
                 event_loop.exit();
             }
             WindowEvent::SurfaceResized(size) => {
                 if let Some(renderer) = &mut self.renderer {
                     renderer.resize(size);
                 }
-                if let Some(window) = &self.window {
-                    window.request_redraw();
-                }
+                window.request_redraw();
             }
             WindowEvent::ScaleFactorChanged { .. } => {
-                if let Some(window) = &self.window {
-                    let new_size = window.outer_size();
-                    if let Some(renderer) = &mut self.renderer {
-                        renderer.resize(new_size);
-                    }
-                    window.request_redraw();
+                let new_size = window.surface_size();
+                if let Some(renderer) = &mut self.renderer {
+                    renderer.resize(new_size);
                 }
+                window.request_redraw();
             }
             WindowEvent::RedrawRequested => {
+                window.pre_present_notify();
+
+                let raw_input = self
+                    .egui_winit
+                    .as_mut()
+                    .map(|state| state.take_input(window.as_ref()))
+                    .unwrap_or_default();
+
                 if let Some(renderer) = &mut self.renderer {
-                    if let Some(window) = &self.window {
-                        window.pre_present_notify();
-                    }
-                    match renderer.render() {
-                        Ok(_) => {}
-                        Err(SurfaceError::Lost) => {
-                            if let Some(window) = &self.window {
-                                renderer.resize(window.outer_size());
+                    match renderer.render_with_input(
+                        window.as_ref(),
+                        raw_input,
+                        |ctx| (self.ui)(ctx, &mut self.state),
+                    ) {
+                        Ok(full_output) => {
+                            if let Some(egui_winit) = &mut self.egui_winit {
+                                egui_winit.handle_platform_output(
+                                    window.as_ref(),
+                                    full_output.platform_output,
+                                );
                             }
+                        }
+                        Err(SurfaceError::Lost) => {
+                            renderer.resize(window.surface_size());
+                            window.request_redraw();
                         }
                         Err(SurfaceError::OutOfMemory) => event_loop.exit(),
                         Err(err) => tracing::error!(?err, "render failed"),
@@ -157,20 +196,48 @@ impl ApplicationHandler for App {
     }
 }
 
-pub fn run_with_spec(spec: WindowSpec) -> Result<(), Box<dyn Error>> {
+/// Run the GUI with window configuration, theme setup, and a UI builder.
+pub fn run_with_ui<S, F, T>(
+    spec: WindowSpec,
+    state: S,
+    ui: F,
+    theme: T,
+) -> Result<(), Box<dyn Error>>
+where
+    S: 'static,
+    F: FnMut(&egui::Context, &mut S) + 'static,
+    T: Fn(&egui::Context) + 'static,
+{
     #[cfg(target_arch = "wasm32")]
     console_error_panic_hook::set_once();
 
     init();
 
     let event_loop = EventLoop::new()?;
-    let mut app = App::default();
-    app.spec = Some(spec);
-    let app_box = Box::new(app);
-    event_loop.run_app(app_box)?;
+    let app = App {
+        window: None,
+        renderer: None,
+        egui_winit: None,
+        spec: Some(spec),
+        state,
+        ui,
+        theme,
+    };
+    event_loop.run_app(Box::new(app))?;
     Ok(())
 }
 
+/// Run with default window settings and no UI (blank window).
 pub fn run() -> Result<(), Box<dyn Error>> {
-    run_with_spec(WindowSpec::default())
+    run_with_ui(
+        WindowSpec::default(),
+        (),
+        |_ctx, _state| {},
+        |_ctx| {},
+    )
+}
+
+/// Backward-compatible entry for callers that only supply a window spec.
+pub fn run_with_spec(spec: WindowSpec) -> Result<(), Box<dyn Error>> {
+    run_with_ui(spec, (), |_ctx, _state| {}, |_ctx| {})
 }

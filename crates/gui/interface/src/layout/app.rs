@@ -1,8 +1,12 @@
+use egui::Context;
+
+use super::draw::{draw_layout, LayoutState};
+use super::spec::Layout;
+
 pub struct AppWindowSpec {
     pub title: String,
     pub width: u32,
     pub height: u32,
-    pub bg_color: [f64; 4],
     pub window_mode: WindowMode,
 }
 
@@ -11,8 +15,7 @@ pub fn app_window_spec() -> AppWindowSpec {
         title: "My App".into(),
         width: 1280,
         height: 720,
-        bg_color: [0.02, 0.14, 0.24, 1.0],
-        window_mode: WindowMode::Borderless,
+        window_mode: WindowMode::Windowed,
     }
 }
 
@@ -23,17 +26,23 @@ pub enum WindowMode {
     Borderless,
 }
 
-#[derive(Clone, Debug)]
-pub enum UIElement {
-    Text(String),
-    Button { label: String, enabled: bool },
-    Checkbox { label: String, checked: bool },
+/// Define what appears on the main window. Positions are fractions of the window
+/// (0.0–1.0) so layout scales when the window is resized.
+///
+/// Example:
+/// ```ignore
+/// Layout::new()
+///     .text_scaled("Welcome", 0.5, 0.15, 1.5)   // centered near top
+///     .checkbox("Agree to terms", "agree", 0.5, 0.45)
+///     .button_requires("Continue", "continue", "agree", 0.5, 0.75)
+/// ```
+pub fn app_layout() -> Layout {
+    Layout::new()
+        .text_scaled("Welcome to My App", 0.5, 0.15, 1.5)
+        .checkbox("Agree to terms", "agree", 0.5, 0.45)
+        .button_requires("Continue", "continue", "agree", 0.5, 0.75)
 }
 
-pub fn app_layout() -> Vec<UIElement> {
-    vec![
-        UIElement::Text("Welcome to My App".into()),
-        UIElement::Checkbox { label: "Agree to terms".into(), checked: false },
-        UIElement::Button { label: "Continue".into(), enabled: false },
-    ]
+pub fn render_app_ui(ctx: &Context, state: &mut LayoutState) {
+    draw_layout(ctx, &app_layout(), state);
 }

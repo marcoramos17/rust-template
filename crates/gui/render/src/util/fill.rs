@@ -1,4 +1,7 @@
 use std::error::Error;
+
+use egui_wgpu::Renderer as EguiRenderer;
+use egui_wgpu::ScreenDescriptor;
 use wgpu::SurfaceError;
 use winit::{
     dpi::PhysicalSize,
@@ -11,11 +14,12 @@ pub struct Renderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    clear_color: wgpu::Color,
+    egui_renderer: EguiRenderer,
+    egui_ctx: egui::Context,
 }
 
 impl Renderer {
-    pub async fn new(window: &dyn Window, bg_color: [f64; 4]) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(window: &dyn Window) -> Result<Self, Box<dyn Error>> {
         let instance = wgpu::Instance::default();
         let surface = instance.create_surface(window)?;
         let surface: wgpu::Surface<'static> = unsafe {
@@ -35,9 +39,14 @@ impl Renderer {
             .request_device(&wgpu::DeviceDescriptor::default(), None)
             .await?;
 
-        let size = window.outer_size();
+        let size = window.surface_size();
         let caps = surface.get_capabilities(&adapter);
-        let format = caps.formats[0];
+        let format = caps
+            .formats
+            .iter()
+            .copied()
+            .find(|f| f.is_srgb())
+            .unwrap_or(caps.formats[0]);
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -52,19 +61,22 @@ impl Renderer {
 
         surface.configure(&device, &config);
 
+        let egui_renderer = EguiRenderer::new(&device, format, None, 1);
+        let egui_ctx = egui::Context::default();
+
         Ok(Self {
             _instance: instance,
             surface,
             device,
             queue,
             config,
-            clear_color: wgpu::Color {
-                r: bg_color[0],
-                g: bg_color[1],
-                b: bg_color[2],
-                a: bg_color[3],
-            },
+            egui_renderer,
+            egui_ctx,
         })
+    }
+
+    pub fn egui_ctx(&self) -> &egui::Context {
+        &self.egui_ctx
     }
 
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
@@ -77,22 +89,65 @@ impl Renderer {
         self.surface.configure(&self.device, &self.config);
     }
 
-    pub fn render(&mut self) -> Result<(), SurfaceError> {
+    pub fn render_with_input<F>(
+        &mut self,
+        window: &dyn Window,
+        raw_input: egui::RawInput,
+        mut build_ui: F,
+    ) -> Result<egui::FullOutput, SurfaceError>
+    where
+        F: FnMut(&egui::Context),
+    {
         let output = self.surface.get_current_texture()?;
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let pixels_per_point = window.scale_factor() as f32 * self.egui_ctx.zoom_factor();
+        let size = window.surface_size();
+        let screen_descriptor = ScreenDescriptor {
+            size_in_pixels: [size.width, size.height],
+            pixels_per_point,
+        };
+
+        let full_output = self.egui_ctx.run(raw_input, |ctx| {
+            build_ui(ctx);
+        });
+
+        for (id, image_delta) in &full_output.textures_delta.set {
+            self.egui_renderer.update_texture(
+                &self.device,
+                &self.queue,
+                *id,
+                image_delta,
+            );
+        }
+
+        let clipped_primitives = self.egui_ctx.tessellate(
+            full_output.shapes.clone(),
+            full_output.pixels_per_point,
+        );
 
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
+        self.egui_renderer.update_buffers(
+            &self.device,
+            &self.queue,
+            &mut encoder,
+            &clipped_primitives,
+            &screen_descriptor,
+        );
+
         {
-            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("clear_pass"),
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("egui_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(self.clear_color),
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -100,10 +155,21 @@ impl Renderer {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
+
+            self.egui_renderer.render(
+                &mut render_pass,
+                &clipped_primitives,
+                &screen_descriptor,
+            );
+        }
+
+        for id in &full_output.textures_delta.free {
+            self.egui_renderer.free_texture(id);
         }
 
         self.queue.submit(Some(encoder.finish()));
         output.present();
-        Ok(())
+
+        Ok(full_output)
     }
 }
