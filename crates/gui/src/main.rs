@@ -1,6 +1,6 @@
 use rust_template_interface::layout::app::{app_window_spec, render_app_ui, WindowMode};
-use rust_template_interface::layout::draw::LayoutState;
-use rust_template_interface::user_interface::theme::apply_theme;
+use rust_template_interface::styling::theme::apply_theme;
+use rust_template_render::LayoutState;
 
 fn main() {
     let spec_data = app_window_spec();

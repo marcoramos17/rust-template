@@ -1,7 +1,7 @@
-use egui::Context;
-
-use super::draw::{draw_layout, LayoutState};
-use super::spec::Layout;
+use rust_template_render::{
+    draw_layout, from_end, pct, px, Button, Checkbox, Layout, LayoutState, Text, CENTER,
+};
+use crate::styling::theme::apply_layout_styles;
 
 pub struct AppWindowSpec {
     pub title: String,
@@ -26,23 +26,33 @@ pub enum WindowMode {
     Borderless,
 }
 
-/// Define what appears on the main window. Positions are fractions of the window
-/// (0.0–1.0) so layout scales when the window is resized.
-///
-/// Example:
-/// ```ignore
-/// Layout::new()
-///     .text_scaled("Welcome", 0.5, 0.15, 1.5)   // centered near top
-///     .checkbox("Agree to terms", "agree", 0.5, 0.45)
-///     .button_requires("Continue", "continue", "agree", 0.5, 0.75)
-/// ```
 pub fn app_layout() -> Layout {
     Layout::new()
-        .text_scaled("Welcome to My App", 0.5, 0.15, 1.5)
-        .checkbox("Agree to terms", "agree", 0.5, 0.45)
-        .button_requires("Continue", "continue", "agree", 0.5, 0.75)
+        .add(
+            Text::new("Welcome to My App")
+                .scale(1.5)
+                .x(CENTER)
+                .y(pct(15.0)),
+        )
+        .add(
+            Checkbox::new("Agree to terms", "agree")
+                .scale(1.2)
+                .x(CENTER)
+                .y(pct(45.0)),
+        )
+        .add(
+            Button::new("Continue", "continue")
+                .x(CENTER)
+                .y(from_end(pct(20.0)))
+                .width(pct(30.0))
+                .height(pct(25.0)) // fixed f32 conversion logic from integer
+                //.style_tag("success")
+                .requires("agree"),
+        )
 }
 
 pub fn render_app_ui(ctx: &Context, state: &mut LayoutState) {
-    draw_layout(ctx, &app_layout(), state);
+    let mut layout = app_layout();
+    apply_layout_styles(&mut layout);
+    draw_layout(ctx, &layout, state);
 }

@@ -1,0 +1,33 @@
+[colors]
+background = "#1E1E2E"
+text       = "#CDD6F4"
+accent     = "#89B4FA"
+panel      = "#313244"
+
+[fonts]
+family        = "proportional"
+size          = 16.0
+heading_scale = 1.5
+
+[widgets.button]
+bg       = "#45475A"
+text     = "#CDD6F4"
+hover_bg = "#585B70"
+rounding = 6.0
+
+[widgets.checkbox]
+bg     = "#45475A"
+stroke = "#89B4FA"
+
+[overrides.success.button]
+bg       = "#A6E3A1"
+text     = "#11111B"
+hover_bg = "#94E2D5"
+rounding = 12.0
+
+[overrides.continue.button]
+bg       = "#89B4FA"
+text     = "#11111B"
+hover_bg = "#B4BEFE"
+rounding = 8.0
+

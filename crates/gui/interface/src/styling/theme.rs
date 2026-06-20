@@ -8,6 +8,8 @@ struct ThemeFile {
     colors: Colors,
     fonts: Fonts,
     widgets: Widgets,
+    #[serde(default)]
+    overrides: std::collections::HashMap<String, WidgetStyleOverride>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -45,6 +47,27 @@ struct CheckboxStyle {
     stroke: String,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+struct WidgetStyleOverride {
+    button: Option<ButtonStyleOverride>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct ButtonStyleOverride {
+    bg: Option<String>,
+    text: Option<String>,
+    hover_bg: Option<String>,
+    rounding: Option<f32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ButtonStyleResolved {
+    pub bg: Option<Color32>,
+    pub text: Option<Color32>,
+    pub hover_bg: Option<Color32>,
+    pub rounding: Option<f32>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Theme {
     pub background: Color32,
@@ -60,12 +83,28 @@ pub struct Theme {
     pub button_rounding: f32,
     pub checkbox_bg: Color32,
     pub checkbox_stroke: Color32,
+    pub overrides: std::collections::HashMap<String, ButtonStyleResolved>,
 }
 
 impl Theme {
     pub fn load() -> Self {
         let file: ThemeFile = toml::from_str(THEME_TOML)
             .unwrap_or_else(|err| panic!("invalid theme.toml: {err}"));
+
+        let mut overrides = std::collections::HashMap::new();
+        for (tag, ov) in file.overrides {
+            if let Some(btn) = ov.button {
+                overrides.insert(
+                    tag,
+                    ButtonStyleResolved {
+                        bg: btn.bg.as_deref().map(parse_color),
+                        text: btn.text.as_deref().map(parse_color),
+                        hover_bg: btn.hover_bg.as_deref().map(parse_color),
+                        rounding: btn.rounding,
+                    },
+                );
+            }
+        }
 
         Self {
             background: parse_color(&file.colors.background),
@@ -81,6 +120,7 @@ impl Theme {
             button_rounding: file.widgets.button.rounding,
             checkbox_bg: parse_color(&file.widgets.checkbox.bg),
             checkbox_stroke: parse_color(&file.widgets.checkbox.stroke),
+            overrides,
         }
     }
 
@@ -160,4 +200,22 @@ fn parse_font_family(name: &str) -> FontFamily {
 
 pub fn apply_theme(ctx: &egui::Context) {
     Theme::load().apply(ctx);
+}
+
+pub fn apply_layout_styles(layout: &mut rust_template_render::Layout) {
+    let theme = Theme::load();
+    for item in &mut layout.items {
+        if let rust_template_render::Element::Button { id, style_tag, style, .. } = &mut item.element {
+            let lookup_keys = [style_tag.as_deref(), Some(id.as_str())];
+            for key in lookup_keys.into_iter().flatten() {
+                if let Some(resolved) = theme.overrides.get(key) {
+                    if let Some(bg) = resolved.bg { style.bg = Some(bg); }
+                    if let Some(text) = resolved.text { style.text = Some(text); }
+                    if let Some(hover_bg) = resolved.hover_bg { style.hover_bg = Some(hover_bg); }
+                    if let Some(rounding) = resolved.rounding { style.rounding = Some(rounding); }
+                    break;
+                }
+            }
+        }
+    }
 }
