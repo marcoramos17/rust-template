@@ -1,5 +1,6 @@
+use egui::Context;
 use rust_template_render::{
-    draw_layout, from_end, pct, px, Button, Checkbox, Layout, LayoutState, Text, CENTER,
+    draw_layout, from_end, pct, Button, Checkbox, Layout, LayoutState, Text, CENTER,
 };
 use crate::styling::theme::apply_layout_styles;
 
@@ -42,10 +43,10 @@ pub fn app_layout() -> Layout {
         )
         .add(
             Button::new("Continue", "continue")
-                .x(CENTER)
+                //.x(px(150.0))
                 .y(from_end(pct(20.0)))
                 .width(pct(30.0))
-                .height(pct(25.0)) // fixed f32 conversion logic from integer
+                .height(pct(10.0)) // fixed f32 conversion logic from integer
                 //.style_tag("success")
                 .requires("agree"),
         )

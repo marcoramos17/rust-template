@@ -205,14 +205,30 @@ pub fn apply_theme(ctx: &egui::Context) {
 pub fn apply_layout_styles(layout: &mut rust_template_render::Layout) {
     let theme = Theme::load();
     for item in &mut layout.items {
-        if let rust_template_render::Element::Button { id, style_tag, style, .. } = &mut item.element {
+        if let rust_template_render::Element::Button { id, style_tag, style, .. } = &mut item.element
+        {
+            // Base styles for all buttons (like `button { ... }` in CSS).
+            style.bg = Some(theme.button_bg);
+            style.text = Some(theme.button_text);
+            style.hover_bg = Some(theme.button_hover_bg);
+            style.rounding = Some(theme.button_rounding);
+
+            // Tag/id overrides (like `button.success { ... }` or `#continue { ... }`).
             let lookup_keys = [style_tag.as_deref(), Some(id.as_str())];
             for key in lookup_keys.into_iter().flatten() {
                 if let Some(resolved) = theme.overrides.get(key) {
-                    if let Some(bg) = resolved.bg { style.bg = Some(bg); }
-                    if let Some(text) = resolved.text { style.text = Some(text); }
-                    if let Some(hover_bg) = resolved.hover_bg { style.hover_bg = Some(hover_bg); }
-                    if let Some(rounding) = resolved.rounding { style.rounding = Some(rounding); }
+                    if let Some(bg) = resolved.bg {
+                        style.bg = Some(bg);
+                    }
+                    if let Some(text) = resolved.text {
+                        style.text = Some(text);
+                    }
+                    if let Some(hover_bg) = resolved.hover_bg {
+                        style.hover_bg = Some(hover_bg);
+                    }
+                    if let Some(rounding) = resolved.rounding {
+                        style.rounding = Some(rounding);
+                    }
                     break;
                 }
             }
