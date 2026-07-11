@@ -1,16 +1,37 @@
-/// Dimension length unit. Supports combinations of % and px.
-#[derive(Clone, Debug, Copy)]
+pub trait ToF32 {
+    fn to_f32(self) -> f32;
+}
+
+impl ToF32 for f32 {
+    fn to_f32(self) -> f32 { self }
+}
+impl ToF32 for f64 {
+    fn to_f32(self) -> f32 { self as f32 }
+}
+impl ToF32 for i32 {
+    fn to_f32(self) -> f32 { self as f32 }
+}
+impl ToF32 for u32 {
+    fn to_f32(self) -> f32 { self as f32 }
+}
+impl ToF32 for i64 {
+    fn to_f32(self) -> f32 { self as f32 }
+}
+impl ToF32 for u64 {
+    fn to_f32(self) -> f32 { self as f32 }
+}
+impl ToF32 for usize {
+    fn to_f32(self) -> f32 { self as f32 }
+}
+
+/// Dimension length and coordinate unit. Supports combinations of % and px.
+///
+/// Use for `x`, `y`, `width`, and `height`. Values combine with `+` and `-`:
+/// `pct(50) + px(10) - px(5)`.
+#[derive(Clone, Debug, Copy, Default)]
 pub struct Length {
     pub percent: f32,
     pub pixels: f32,
-}
-
-/// Positioning unit relative to container edges.
-#[derive(Clone, Debug, Copy)]
-pub enum Position {
-    FromStart(Length),
-    FromEnd(Length),
-    Center(Length),
 }
 
 impl Length {
@@ -44,55 +65,69 @@ impl std::ops::Add for Length {
     }
 }
 
+impl std::ops::Sub for Length {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self {
+            percent: self.percent - rhs.percent,
+            pixels: self.pixels - rhs.pixels,
+        }
+    }
+}
+
+impl std::ops::Neg for Length {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Self {
+            percent: -self.percent,
+            pixels: -self.pixels,
+        }
+    }
+}
+
 impl From<f32> for Length {
     fn from(val: f32) -> Self {
         if val.abs() <= 1.0 {
-            // Treat as fraction/percentage
             Self::frac(val)
         } else {
-            // Treat as absolute pixels
             Self::px(val)
         }
     }
 }
 
-impl From<Length> for Position {
-    fn from(length: Length) -> Self {
-        Self::FromStart(length)
+impl From<i32> for Length {
+    fn from(val: i32) -> Self {
+        Self::px(val as f32)
     }
 }
 
-impl From<f32> for Position {
-    fn from(val: f32) -> Self {
-        Self::FromStart(Length::from(val))
-    }
+pub fn px(val: impl ToF32) -> Length {
+    Length::px(val.to_f32())
 }
 
-pub fn px(val: f32) -> Length {
-    Length::px(val)
+pub fn pct(val: impl ToF32) -> Length {
+    Length::pct(val.to_f32())
 }
 
-pub fn pct(val: f32) -> Length {
-    Length::pct(val)
+pub fn frac(val: impl ToF32) -> Length {
+    Length::frac(val.to_f32())
 }
 
-pub fn frac(val: f32) -> Length {
-    Length::frac(val)
+pub fn from_start(l: Length) -> Length {
+    l
 }
 
-pub fn from_start(l: impl Into<Length>) -> Position {
-    Position::FromStart(l.into())
+pub fn from_end(l: Length) -> Length {
+    Length { percent: 100.0, pixels: 0.0 } - l
 }
 
-pub fn from_end(l: impl Into<Length>) -> Position {
-    Position::FromEnd(l.into())
+pub fn center_offset(l: Length) -> Length {
+    CENTER + l
 }
 
-pub fn center_offset(l: impl Into<Length>) -> Position {
-    Position::Center(l.into())
-}
-
-pub const CENTER: Position = Position::Center(Length::ZERO);
+pub const CENTER: Length = Length { percent: 50.0, pixels: 0.0 };
 
 /// Declarative page layout (like HTML structure).
 #[derive(Clone, Debug)]
@@ -103,8 +138,8 @@ pub struct Layout {
 #[derive(Clone, Debug)]
 pub struct LayoutItem {
     pub element: Element,
-    pub x: Position,
-    pub y: Position,
+    pub x: Length,
+    pub y: Length,
     pub width: Option<Length>,
     pub height: Option<Length>,
 }
@@ -154,8 +189,8 @@ impl Layout {
     pub fn text(
         self,
         content: impl Into<String>,
-        x: impl Into<Position>,
-        y: impl Into<Position>,
+        x: impl Into<Length>,
+        y: impl Into<Length>,
     ) -> Self {
         self.add(Text::new(content).x(x).y(y))
     }
@@ -163,8 +198,8 @@ impl Layout {
     pub fn text_scaled(
         self,
         content: impl Into<String>,
-        x: impl Into<Position>,
-        y: impl Into<Position>,
+        x: impl Into<Length>,
+        y: impl Into<Length>,
         scale: f32,
     ) -> Self {
         self.add(Text::new(content).x(x).y(y).scale(scale))
@@ -174,8 +209,8 @@ impl Layout {
         self,
         label: impl Into<String>,
         id: impl Into<String>,
-        x: impl Into<Position>,
-        y: impl Into<Position>,
+        x: impl Into<Length>,
+        y: impl Into<Length>,
     ) -> Self {
         self.add(Checkbox::new(label, id).x(x).y(y))
     }
@@ -184,8 +219,8 @@ impl Layout {
         self,
         label: impl Into<String>,
         id: impl Into<String>,
-        x: impl Into<Position>,
-        y: impl Into<Position>,
+        x: impl Into<Length>,
+        y: impl Into<Length>,
     ) -> Self {
         self.add(Button::new(label, id).x(x).y(y))
     }
@@ -195,8 +230,8 @@ impl Layout {
         label: impl Into<String>,
         id: impl Into<String>,
         requires: impl Into<String>,
-        x: impl Into<Position>,
-        y: impl Into<Position>,
+        x: impl Into<Length>,
+        y: impl Into<Length>,
     ) -> Self {
         self.add(Button::new(label, id).x(x).y(y).requires(requires))
     }
@@ -207,8 +242,10 @@ impl Layout {
 pub struct Text {
     pub content: String,
     pub scale: f32,
-    pub x: Position,
-    pub y: Position,
+    pub x: Length,
+    pub y: Length,
+    pub width: Option<Length>,
+    pub height: Option<Length>,
 }
 
 impl Text {
@@ -218,6 +255,8 @@ impl Text {
             scale: 1.0,
             x: CENTER,
             y: CENTER,
+            width: None,
+            height: None,
         }
     }
 
@@ -226,13 +265,23 @@ impl Text {
         self
     }
 
-    pub fn x(mut self, x: impl Into<Position>) -> Self {
+    pub fn x(mut self, x: impl Into<Length>) -> Self {
         self.x = x.into();
         self
     }
 
-    pub fn y(mut self, y: impl Into<Position>) -> Self {
+    pub fn y(mut self, y: impl Into<Length>) -> Self {
         self.y = y.into();
+        self
+    }
+
+    pub fn width(mut self, width: impl Into<Length>) -> Self {
+        self.width = Some(width.into());
+        self
+    }
+
+    pub fn height(mut self, height: impl Into<Length>) -> Self {
+        self.height = Some(height.into());
         self
     }
 }
@@ -246,8 +295,8 @@ impl ToLayoutItem for Text {
             },
             x: self.x,
             y: self.y,
-            width: None,
-            height: None,
+            width: self.width,
+            height: self.height,
         }
     }
 }
@@ -258,8 +307,8 @@ pub struct Checkbox {
     pub label: String,
     pub id: String,
     pub scale: f32,
-    pub x: Position,
-    pub y: Position,
+    pub x: Length,
+    pub y: Length,
 }
 
 impl Checkbox {
@@ -278,12 +327,12 @@ impl Checkbox {
         self
     }
 
-    pub fn x(mut self, x: impl Into<Position>) -> Self {
+    pub fn x(mut self, x: impl Into<Length>) -> Self {
         self.x = x.into();
         self
     }
 
-    pub fn y(mut self, y: impl Into<Position>) -> Self {
+    pub fn y(mut self, y: impl Into<Length>) -> Self {
         self.y = y.into();
         self
     }
@@ -310,8 +359,8 @@ impl ToLayoutItem for Checkbox {
 pub struct Button {
     pub label: String,
     pub id: String,
-    pub x: Position,
-    pub y: Position,
+    pub x: Length,
+    pub y: Length,
     pub width: Option<Length>,
     pub height: Option<Length>,
     pub style_tag: Option<String>,
@@ -332,12 +381,12 @@ impl Button {
         }
     }
 
-    pub fn x(mut self, x: impl Into<Position>) -> Self {
+    pub fn x(mut self, x: impl Into<Length>) -> Self {
         self.x = x.into();
         self
     }
 
-    pub fn y(mut self, y: impl Into<Position>) -> Self {
+    pub fn y(mut self, y: impl Into<Length>) -> Self {
         self.y = y.into();
         self
     }

@@ -16,6 +16,18 @@
 This repository serves as a centralized template for managing Rust programming language projects efficiently. It features optional GitHub Project support (for kanban/task tracking), flexible branching, and — most notably — **automated generation and deployment of Rust documentation via GitHub Actions and GitHub Pages**.
 
 ---
+To run the GUI and CLI binaries, use the following commands:
+
+### 1. Running the GUI
+```powershell
+cargo run -p rust_template_gui
+```
+
+### 2. Running the CLI
+```powershell
+cargo run -p rust_template_cli
+```
+---
 
 ## Document Information
 

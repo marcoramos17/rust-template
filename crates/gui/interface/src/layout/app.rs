@@ -1,6 +1,6 @@
 use egui::Context;
 use rust_template_render::{
-    draw_layout, from_end, pct, Button, Checkbox, Layout, LayoutState, Text, CENTER,
+    draw_layout, pct, px, Button, Checkbox, Layout, LayoutState, Text, CENTER,
 };
 use crate::styling::theme::apply_layout_styles;
 
@@ -30,25 +30,37 @@ pub enum WindowMode {
 pub fn app_layout() -> Layout {
     Layout::new()
         .add(
-            Text::new("Welcome to My App")
-                .scale(1.5)
+            Text::new("Hello, World!")
+                .scale(3.0)
                 .x(CENTER)
-                .y(pct(15.0)),
+                .y(CENTER - pct(1.0)),
         )
         .add(
             Checkbox::new("Agree to terms", "agree")
                 .scale(1.2)
                 .x(CENTER)
-                .y(pct(45.0)),
+                .y(px(30)),
         )
         .add(
             Button::new("Continue", "continue")
-                //.x(px(150.0))
-                .y(from_end(pct(20.0)))
-                .width(pct(30.0))
-                .height(pct(10.0)) // fixed f32 conversion logic from integer
-                //.style_tag("success")
+                .x(pct(100) - pct(1))
+                .y(CENTER + pct(5))
+                .width(pct(10))
+                .height(pct(2) + px(20))
                 .requires("agree"),
+        )
+        .add(
+            Button::new("Cancel", "cancel")
+                .x(pct(100) - pct(1))
+                .y(CENTER - pct(5))
+                .width(pct(10))
+                .height(pct(2) + px(20)),
+        )
+        .add(
+            Text::new("This is a test app GUI")
+                .scale(1.0)
+                .x(CENTER)
+                .y(CENTER - pct(1.0)),
         )
 }
 

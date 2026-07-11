@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use egui::{Context, RichText};
 
-use super::spec::{Element, Layout, LayoutItem, Length, Position};
+use super::spec::{Element, Layout, LayoutItem, Length};
 
 /// Interactive state keyed by element id (checkboxes, etc.).
 #[derive(Clone, Debug, Default)]
@@ -60,86 +60,92 @@ fn draw_item(
     let width = item.resolve_width(screen.width());
     let height = item.resolve_height(screen.height());
 
-    let x = match item.x {
-        Position::FromStart(ref l) => screen.left() + l.to_pixels(screen.width()),
-        Position::FromEnd(ref l) => screen.right() - l.to_pixels(screen.width()) - width,
-        Position::Center(ref l) => screen.left() + (screen.width() - width) / 2.0 + l.to_pixels(screen.width()),
-    };
+    let cx = screen.left() + item.x.to_pixels(screen.width());
+    let cy = screen.top() + item.y.to_pixels(screen.height());
 
-    let y = match item.y {
-        Position::FromStart(ref l) => screen.top() + l.to_pixels(screen.height()),
-        Position::FromEnd(ref l) => screen.bottom() - l.to_pixels(screen.height()) - height,
-        Position::Center(ref l) => screen.top() + (screen.height() - height) / 2.0 + l.to_pixels(screen.height()),
-    };
+    let rect = egui::Rect::from_center_size(egui::pos2(cx, cy), egui::vec2(width, height));
 
-    let rect = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(width, height));
-
-    ui.allocate_ui_at_rect(rect, |ui| {
-        match &item.element {
-            Element::Text { content, scale } => {
-                ui.with_layout(
-                    egui::Layout::centered_and_justified(egui::Direction::TopDown),
-                    |ui| {
-                        ui.label(
-                            RichText::new(content).size(
-                                ui.style().text_styles[&egui::TextStyle::Body].size * scale,
-                            ),
-                        );
-                    },
-                );
-            }
-            Element::Checkbox { label, id, scale } => {
-                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                    let orig_spacing = ui.spacing().icon_width;
-                    ui.spacing_mut().icon_width = orig_spacing * scale;
-
-                    let mut checked = *state.checkbox(id);
-                    let rich_label = RichText::new(label).size(
-                        ui.style().text_styles[&egui::TextStyle::Body].size * scale,
-                    );
-                    if ui.checkbox(&mut checked, rich_label).changed() {
-                        *state.checkbox(id) = checked;
-                    }
-
-                    ui.spacing_mut().icon_width = orig_spacing;
-                });
-            }
-            Element::Button {
-                label,
-                id: _,
-                style_tag: _,
-                style,
-                requires,
-            } => {
-                let enabled = requires
-                    .as_ref()
-                    .map(|req| state.is_checked(req))
-                    .unwrap_or(true);
-
-                if let Some(bg) = style.bg {
-                    ui.style_mut().visuals.widgets.inactive.bg_fill = bg;
-                }
-                if let Some(text) = style.text {
-                    ui.style_mut().visuals.widgets.inactive.fg_stroke.color = text;
-                    ui.style_mut().visuals.widgets.hovered.fg_stroke.color = text;
-                    ui.style_mut().visuals.widgets.active.fg_stroke.color = text;
-                }
-                if let Some(hover_bg) = style.hover_bg {
-                    ui.style_mut().visuals.widgets.hovered.bg_fill = hover_bg;
-                }
-                if let Some(rounding) = style.rounding {
-                    let rounding = egui::Rounding::same(rounding);
-                    ui.style_mut().visuals.widgets.inactive.rounding = rounding;
-                    ui.style_mut().visuals.widgets.hovered.rounding = rounding;
-                    ui.style_mut().visuals.widgets.active.rounding = rounding;
-                }
-
-                ui.add_enabled_ui(enabled, |ui| {
-                    let response =
-                        ui.add_sized(egui::vec2(width, height), egui::Button::new(label));
-                    let _ = response.clicked();
-                });
-            }
-        }
+    let id = egui::Id::new(match &item.element {
+        Element::Text { content, .. } => content.as_str(),
+        Element::Checkbox { id, .. } => id.as_str(),
+        Element::Button { id, .. } => id.as_str(),
     });
+
+    egui::Area::new(id)
+        .fixed_pos(rect.left_top())
+        .interactable(matches!(
+            item.element,
+            Element::Checkbox { .. } | Element::Button { .. }
+        ))
+        .show(ui.ctx(), |ui| {
+            ui.allocate_ui(egui::vec2(width, height), |ui| {
+                match &item.element {
+                    Element::Text { content, scale } => {
+                        ui.with_layout(
+                            egui::Layout::centered_and_justified(egui::Direction::TopDown),
+                            |ui| {
+                                ui.label(
+                                    RichText::new(content).size(
+                                        ui.style().text_styles[&egui::TextStyle::Body].size
+                                            * scale,
+                                    ),
+                                );
+                            },
+                        );
+                    }
+                    Element::Checkbox { label, id, scale } => {
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            let orig_spacing = ui.spacing().icon_width;
+                            ui.spacing_mut().icon_width = orig_spacing * scale;
+
+                            let mut checked = *state.checkbox(id);
+                            let rich_label = RichText::new(label).size(
+                                ui.style().text_styles[&egui::TextStyle::Body].size * scale,
+                            );
+                            if ui.checkbox(&mut checked, rich_label).changed() {
+                                *state.checkbox(id) = checked;
+                            }
+
+                            ui.spacing_mut().icon_width = orig_spacing;
+                        });
+                    }
+                    Element::Button {
+                        label,
+                        id: _,
+                        style_tag: _,
+                        style,
+                        requires,
+                    } => {
+                        let enabled = requires
+                            .as_ref()
+                            .map(|req| state.is_checked(req))
+                            .unwrap_or(true);
+
+                        ui.add_enabled_ui(enabled, |ui| {
+                            if let Some(bg) = style.bg {
+                                ui.style_mut().visuals.widgets.inactive.bg_fill = bg;
+                            }
+                            if let Some(text) = style.text {
+                                ui.style_mut().visuals.widgets.inactive.fg_stroke.color = text;
+                                ui.style_mut().visuals.widgets.hovered.fg_stroke.color = text;
+                                ui.style_mut().visuals.widgets.active.fg_stroke.color = text;
+                            }
+                            if let Some(hover_bg) = style.hover_bg {
+                                ui.style_mut().visuals.widgets.hovered.bg_fill = hover_bg;
+                            }
+                            if let Some(rounding) = style.rounding {
+                                let rounding = egui::Rounding::same(rounding);
+                                ui.style_mut().visuals.widgets.inactive.rounding = rounding;
+                                ui.style_mut().visuals.widgets.hovered.rounding = rounding;
+                                ui.style_mut().visuals.widgets.active.rounding = rounding;
+                            }
+
+                            let response =
+                                ui.add_sized(egui::vec2(width, height), egui::Button::new(label));
+                            let _ = response.clicked();
+                        });
+                    }
+                }
+            });
+        });
 }
